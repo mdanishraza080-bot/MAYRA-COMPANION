@@ -1,0 +1,118 @@
+name: Build MAYRA APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Create App Structure
+        run: |
+          mkdir -p app/src/main/java/com/mayra/companion
+          
+          cat << 'EOF' > settings.gradle
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name = "MAYRA"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > build.gradle
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.mayra.companion'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.mayra.companion"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      signingConfig signingConfigs.debug
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:label="MAYRA"
+                  android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/mayra/companion/MainActivity.java
+          package com.mayra.companion;
+          import android.os.Bundle;
+          import android.webkit.*;
+          import androidx.appcompat.app.AppCompatActivity;
+
+          public class MainActivity extends AppCompatActivity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  WebView webView = new WebView(this);
+                  setContentView(webView);
+                  WebSettings s = webView.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  webView.setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public void onPermissionRequest(PermissionRequest r) { r.grant(r.getResources()); }
+                  });
+                  String h = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{background:#0f0b1e;color:#fff;font-family:sans-serif;padding:16px;}#c{height:75vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}.m{padding:10px 14px;border-radius:12px;max-width:80%;font-size:14px;}.u{align-self:flex-end;background:#352b63;}.b{align-self:flex-start;background:#1f163d;border:1px solid #9d65ff;}input{width:70%;padding:10px;background:#231b42;border:none;color:#fff;border-radius:20px;}button{padding:10px 14px;border-radius:50%;background:#9d65ff;color:#fff;border:none;}</style></head><body><h3>MAYRA AI</h3><div id='c'></div><div style='display:flex;gap:8px;position:fixed;bottom:10px;width:90%;'><input id='i' placeholder='Kuch boliye ya likhiye...'><button onclick='s()'>➤</button></div><script>function spk(t){if('speechSynthesis' in window){var u=new SpeechSynthesisUtterance(t);u.lang='hi-IN';window.speechSynthesis.speak(u);}}function a(cls,t){var d=document.createElement('div');d.className='m '+cls;d.innerText=t;document.getElementById('c').appendChild(d);}function s(){var v=document.getElementById('i').value;if(!v)return;a('u',v);document.getElementById('i').value='';setTimeout(function(){var r='Main sun rahi hoon! Kaise ho aap?';if(v.toLowerCase().includes('udaas')||v.toLowerCase().includes('sad')){r='Udaas mat hoiye, main hamesha aapke saath hoon.';}a('b',r);spk(r);},500);}a('b','Namaste! Main MAYRA hoon.');spk('Namaste! Main MAYRA hoon.');</script></body></html>";
+                  webView.loadDataWithBaseURL(null, h, "text/html", "UTF-8", null);
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle assembleRelease --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAYRA-APK
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
